@@ -41,19 +41,19 @@
 #  SOFTWARE
 
 
-
-
-
 import os
+import time
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from pyrogram import Client, idle
-from config import Config
-from pyromod import listen
 from logging.handlers import RotatingFileHandler
 
-# Logging Configuration
+from config import Config
+from pyrogram import Client, idle
+from pyrogram.errors import BadMsgNotification
+from pyromod import listen
+
+# Logger setup
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
@@ -71,40 +71,57 @@ AUTH_USERS = [int(chat) for chat in Config.AUTH_USERS.split(",") if chat != ""]
 # Prefixes
 prefixes = ["/", "~", "?", "!"]
 
-# Plugins Directory
+# Plugins
 plugins = dict(root="plugins")
 
-# Sync Time Function
+# Bot Initialization
+bot = Client(
+    "StarkBot",
+    bot_token=Config.BOT_TOKEN,
+    api_id=Config.API_ID,
+    api_hash=Config.API_HASH,
+    sleep_threshold=20,
+    plugins=plugins,
+    workers=50,
+)
+
+
+# Time Sync Function
 async def sync_time():
     try:
-        current_time = datetime.utcnow()
-        await asyncio.sleep(1)  # Small delay for synchronization
-        LOGGER.info(f"Time synchronized: {current_time + timedelta(seconds=1)}")
+        utc_now = datetime.utcnow()
+        adjusted_time = utc_now + timedelta(seconds=2)  # Small adjustment
+        os.environ["TZ"] = "UTC"
+        time.tzset()
+        LOGGER.info(f"Time synchronized to: {adjusted_time}")
     except Exception as e:
         LOGGER.error(f"Time synchronization failed: {e}")
 
-# Main Bot Initialization
+
+# Retry Mechanism for Connection
+async def connect_with_retries(bot, retries=3, delay=5):
+    for attempt in range(retries):
+        try:
+            await bot.start()
+            return  # Successful connection
+        except BadMsgNotification:
+            LOGGER.warning(f"Time sync failed. Retrying in {delay} seconds...")
+            await asyncio.sleep(delay)
+    raise RuntimeError("Failed to connect after multiple retries.")
+
+
+# Main Function
+async def main():
+    await sync_time()  # Sync time before starting
+    await connect_with_retries(bot)  # Attempt connection with retries
+    bot_info = await bot.get_me()
+    LOGGER.info(f"<--- @{bot_info.username} Started (c) STARKBOT --->")
+    await idle()
+
+
+# Start the Bot
 if __name__ == "__main__":
-    bot = Client(
-        "StarkBot",
-        bot_token=Config.BOT_TOKEN,
-        api_id=Config.API_ID,
-        api_hash=Config.API_HASH,
-        sleep_threshold=20,
-        plugins=plugins,
-        workers=50,
-    )
-
-    async def main():
-        # Time Synchronization
-        await sync_time()
-
-        # Start Bot
-        await bot.start()
-        bot_info = await bot.get_me()
-        LOGGER.info(f"<--- @{bot_info.username} Started (c) STARKBOT --->")
-        await idle()
-
-    # Run Event Loop
-    asyncio.get_event_loop().run_until_complete(main())
-    LOGGER.info("<--- Bot Stopped --->")
+    try:
+        asyncio.get_event_loop().run_until_complete(main())
+    except (KeyboardInterrupt, SystemExit):
+        LOGGER.info("<---Bot Stopped-->")
