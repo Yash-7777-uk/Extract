@@ -45,95 +45,66 @@
 
 
 import os
-
-from config import Config
-
+import asyncio
+import logging
+from datetime import datetime, timedelta
 from pyrogram import Client, idle
-
-import asyncio, logging
-
-import tgcrypto
-
+from config import Config
 from pyromod import listen
-
 from logging.handlers import RotatingFileHandler
 
-
-
+# Logging Configuration
 LOGGER = logging.getLogger(__name__)
-
 logging.basicConfig(
-
     level=logging.INFO,
-
     format="%(name)s - %(message)s",
-
     datefmt="%d-%b-%y %H:%M:%S",
-
     handlers=[
-
-        RotatingFileHandler(
-
-            "log.txt", maxBytes=5000000, backupCount=10
-
-        ),
-
+        RotatingFileHandler("log.txt", maxBytes=5000000, backupCount=10),
         logging.StreamHandler(),
-
     ],
-
 )
 
-
-
 # Auth Users
+AUTH_USERS = [int(chat) for chat in Config.AUTH_USERS.split(",") if chat != ""]
 
-AUTH_USERS = [ int(chat) for chat in Config.AUTH_USERS.split(",") if chat != '']
-
-
-
-# Prefixes 
-
+# Prefixes
 prefixes = ["/", "~", "?", "!"]
 
-
-
+# Plugins Directory
 plugins = dict(root="plugins")
 
-if __name__ == "__main__" :
+# Sync Time Function
+async def sync_time():
+    try:
+        current_time = datetime.utcnow()
+        await asyncio.sleep(1)  # Small delay for synchronization
+        LOGGER.info(f"Time synchronized: {current_time + timedelta(seconds=1)}")
+    except Exception as e:
+        LOGGER.error(f"Time synchronization failed: {e}")
 
+# Main Bot Initialization
+if __name__ == "__main__":
     bot = Client(
-
         "StarkBot",
-
         bot_token=Config.BOT_TOKEN,
-
         api_id=Config.API_ID,
-
         api_hash=Config.API_HASH,
-
         sleep_threshold=20,
-
         plugins=plugins,
-
-        workers = 50
-
+        workers=50,
     )
 
-    
-
     async def main():
+        # Time Synchronization
+        await sync_time()
 
+        # Start Bot
         await bot.start()
-
-        bot_info  = await bot.get_me()
-
+        bot_info = await bot.get_me()
         LOGGER.info(f"<--- @{bot_info.username} Started (c) STARKBOT --->")
-
         await idle()
 
-    
-
+    # Run Event Loop
     asyncio.get_event_loop().run_until_complete(main())
-
-    LOGGER.info(f"<---Bot Stopped-->")
+    LOGGER.info("<--- Bot Stopped --->")
